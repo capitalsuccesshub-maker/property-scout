@@ -53,7 +53,6 @@ class IdealistaScraper:
                 try:
                     page.goto(url, wait_until="networkidle", timeout=60000)
                     # Wait for property listings to appear
-                    page.wait_for_selector('article.item', timeout=30000)
                     time.sleep(5)  # Additional wait for JavaScript content
                     
                     html = page.content()
