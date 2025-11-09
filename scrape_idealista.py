@@ -100,7 +100,7 @@ class IdealistaScraper:
             
             # Property details
             details = []
-                        detail_elems = card.find_all('span', class_='item-detail-char')
+                    detail_elems = card.find_all('span', class_='item-detail-char')
             for detail in detail_elems:
                 details.append(detail.get_text(strip=True))
             
