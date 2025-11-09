@@ -10,7 +10,7 @@ import json
 import logging
 import argparse
 import requests
-from datetime import datetime
+from datetime  import datetime
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import time
@@ -28,7 +28,7 @@ class IdealistaScraper:
         self.base44_api_key = base44_api_key
         self.base44_app_id = base44_app_id
         self.base44_url = f"https://app.base44.com/api/apps/{base44_app_id}/entities/BienImmobilier"
-        
+    
     def scrape_properties(self, city="madrid", operation="venta", max_pages=1):
         """
         Scrape properties from Idealista
@@ -52,13 +52,15 @@ class IdealistaScraper:
                 
                 try:
                     page.goto(url, wait_until="networkidle", timeout=60000)
-                    time.sleep(3)
+                    # Wait for property listings to appear
+                    page.wait_for_selector('article.item', timeout=30000)
+                    time.sleep(5)  # Additional wait for JavaScript content
                     
                     html = page.content()
                     soup = BeautifulSoup(html, 'html.parser')
                     
-                    # Find all property cards
-                    property_cards = soup.find_all('article', class_='item')
+                    # Find all property cards - use contains for class matching
+                    property_cards = soup.find_all('article', class_=lambda x: x and 'item' in x)
                     logger.info(f"Found {len(property_cards)} properties on page {page_num}")
                     
                     for card in property_cards:
@@ -69,7 +71,7 @@ class IdealistaScraper:
                         except Exception as e:
                             logger.error(f"Error parsing property: {str(e)}")
                             continue
-                    
+                            
                 except Exception as e:
                     logger.error(f"Error scraping page {page_num}: {str(e)}")
                     continue
@@ -83,118 +85,137 @@ class IdealistaScraper:
         """
         Parse individual property card
         """
-        property_data = {}
+        try:
+            # Title and URL
+            title_elem = card.find('a', class_='item-link')
+            if not title_elem:
+                return None
+                
+            title = title_elem.get_text(strip=True)
+            url = "https://www.idealista.com" + title_elem.get('href', '')
+            
+            # Price
+            price_elem = card.find('span', class_='item-price')
+            price_text = price_elem.get_text(strip=True) if price_elem else "0"
+            price = int(re.sub(r'[^0-9]', '', price_text)) if price_text else 0
+            
+            # Property details
+            details = []
+            detail_elems = card.find_all('span', class_='item-detail')
+            for detail in detail_elems:
+                details.append(detail.get_text(strip=True))
+            
+            # Extract rooms, surface, bathrooms from details
+            rooms = 0
+            surface = 0
+            bathrooms = 0
+            
+            for detail in details:
+                if 'hab' in detail.lower() or 'ch.' in detail.lower():
+                    rooms = int(re.findall(r'\d+', detail)[0]) if re.findall(r'\d+', detail) else 0
+                elif 'm²' in detail or 'm2' in detail:
+                    surface = int(re.findall(r'\d+', detail)[0]) if re.findall(r'\d+', detail) else 0
+                elif 'ba' in detail.lower():
+                    bathrooms = int(re.findall(r'\d+', detail)[0]) if re.findall(r'\d+', detail) else 0
+            
+            # Description
+            desc_elem = card.find('div', class_='item-description')
+            description = desc_elem.get_text(strip=True) if desc_elem else ""
+            
+            # Address (from title or separate element)
+            address_parts = title.split(' - ')
+            address = address_parts[-1] if len(address_parts) > 1 else title
+            
+            # Calculate rental yield estimate (simplified)
+            rental_yield = round((price * 0.05) / 12, 2) if price > 0 else 0
+            
+            return {
+                "titre": title,
+                "prix": price,
+                "surface": surface,
+                "chambres": rooms,
+                "sallesDeBain": bathrooms,
+                "adresse": address,
+                "description": description[:500],  # Limit description length
+                "url": url,
+                "source": "Idealista",
+                "dateAjout": datetime.now().isoformat(),
+                "potentielLocatif": rental_yield,
+                "noteInteret": self._calculate_interest_score(price, surface, rooms)
+            }
+        except Exception as e:
+            logger.error(f"Error in _parse_property: {str(e)}")
+            return None
+    
+    def _calculate_interest_score(self, price, surface, rooms):
+        """
+        Calculate interest score (0-10) based on property characteristics
+        """
+        score = 5.0  # Base score
         
-        # Get title and URL
-        title_elem = card.find('a', class_='item-link')
-        if title_elem:
-            property_data['titre'] = title_elem.get_text(strip=True)
-            property_data['url'] = 'https://www.idealista.com' + title_elem.get('href', '')
+        # Price per m² analysis
+        if surface > 0:
+            price_per_m2 = price / surface
+            if price_per_m2 < 3000:
+                score += 2
+            elif price_per_m2 < 4000:
+                score += 1
+            elif price_per_m2 > 6000:
+                score -= 1
         
-        # Get price
-        price_elem = card.find('span', class_='item-price')
-        if price_elem:
-            price_text = price_elem.get_text(strip=True)
-            # Extract numeric value
-            price_numbers = re.findall(r'[\d,]+', price_text.replace('.', ''))
-            if price_numbers:
-                property_data['prix'] = float(price_numbers[0].replace(',', ''))
+        # Size bonus
+        if surface >= 80:
+            score += 1
         
-        # Get property details (surface, rooms, bathrooms)
-        detail_elems = card.find_all('span', class_='item-detail')
-        for detail in detail_elems:
-            text = detail.get_text(strip=True)
-            if 'm²' in text:
-                numbers = re.findall(r'\d+', text)
-                if numbers:
-                    property_data['surface'] = int(numbers[0])
-            elif 'room' in text.lower() or 'habitación' in text.lower() or 'hab' in text.lower():
-                numbers = re.findall(r'\d+', text)
-                if numbers:
-                    property_data['chambres'] = int(numbers[0])
-            elif 'bath' in text.lower() or 'baño' in text.lower():
-                numbers = re.findall(r'\d+', text)
-                if numbers:
-                    property_data['sallesDeBain'] = int(numbers[0])
+        # Rooms bonus
+        if rooms >= 3:
+            score += 1
         
-        # Get description
-        desc_elem = card.find('div', class_='item-description')
-        if desc_elem:
-            property_data['description'] = desc_elem.get_text(strip=True)
-        
-        # Get location
-        location_elem = card.find('span', class_='item-detail') or card.find('a', class_='item-link')
-        if location_elem:
-            # Try to extract location from various possible elements
-            property_data['adresse'] = 'Madrid, Spain'  # Default
-        
-        # Add metadata
-        property_data['source'] = 'Idealista'
-        property_data['dateAjout'] = datetime.now().isoformat()
-        property_data['pays'] = 'Spain'
-        property_data['ville'] = 'Madrid'
-        
-        # Calculate rental potential (basic estimate: 4% annual return)
-        if 'prix' in property_data:
-            property_data['potentielLocatif'] = round(property_data['prix'] * 0.04 / 12, 2)
-        
-        return property_data if property_data.get('titre') else None
+        return min(10.0, max(0.0, round(score, 1)))
     
     def send_to_base44(self, properties):
         """
         Send properties to Base44 API
         """
-        logger.info(f"Sending {len(properties)} properties to Base44...")
+        if not properties:
+            logger.warning("No properties to send")
+            return
         
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self.base44_api_key}'
+            "x-api-key": self.base44_api_key,
+            "Content-Type": "application/json"
         }
         
         success_count = 0
-        error_count = 0
-        
         for prop in properties:
             try:
-                response = requests.post(
-                    self.base44_url,
-                    headers=headers,
-                    json=prop,
-                    timeout=30
-                )
-                
+                response = requests.post(self.base44_url, json=prop, headers=headers)
                 if response.status_code in [200, 201]:
                     success_count += 1
-                    logger.info(f"✓ Sent: {prop.get('titre', 'Unknown')}")
+                    logger.info(f"Successfully sent: {prop['titre'][:50]}...")
                 else:
-                    error_count += 1
-                    logger.error(f"✗ Failed to send property: {response.status_code} - {response.text}")
-            
+                    logger.error(f"Failed to send property: {response.status_code} - {response.text}")
             except Exception as e:
-                error_count += 1
-                logger.error(f"✗ Error sending property: {str(e)}")
+                logger.error(f"Error sending to Base44: {str(e)}")
         
-        logger.info(f"\nResults: {success_count} successful, {error_count} errors")
-        return success_count, error_count
+        logger.info(f"Successfully sent {success_count}/{len(properties)} properties to Base44")
 
 def main():
     parser = argparse.ArgumentParser(description='Scrape Idealista properties')
     parser.add_argument('--city', default='madrid', help='City to scrape')
-    parser.add_argument('--operation', default='venta', choices=['venta', 'alquiler'], 
-                        help='Operation type: venta (sale) or alquiler (rent)')
-    parser.add_argument('--pages', type=int, default=1, help='Number of pages to scrape')
-    parser.add_argument('--dry-run', action='store_true', help='Scrape but do not send to Base44')
-    
+    parser.add_argument('--operation', default='venta', help='Operation type (venta/alquiler)')
+    parser.add_argument('--pages', type=int, default=2, help='Number of pages to scrape')
     args = parser.parse_args()
     
-    # Get credentials from environment variables
+    # Get credentials from environment
     api_key = os.getenv('BASE44_API_KEY')
     app_id = os.getenv('BASE44_APP_ID')
     
     if not api_key or not app_id:
-        logger.error("Error: BASE44_API_KEY and BASE44_APP_ID environment variables are required")
+        logger.error("Missing BASE44_API_KEY or BASE44_APP_ID environment variables")
         sys.exit(1)
     
+    # Initialize scraper
     scraper = IdealistaScraper(api_key, app_id)
     
     # Scrape properties
@@ -204,22 +225,11 @@ def main():
         max_pages=args.pages
     )
     
-    if not properties:
-        logger.warning("No properties found")
-        sys.exit(0)
-    
-    # Print summary
-    logger.info(f"\n{'='*50}")
-    logger.info(f"Scraped {len(properties)} properties")
-    logger.info(f"{'='*50}\n")
-    
-    if args.dry_run:
-        logger.info("DRY RUN - Not sending to Base44")
-        for i, prop in enumerate(properties[:5], 1):
-            logger.info(f"{i}. {prop.get('titre')} - €{prop.get('prix', 'N/A')}")
-    else:
-        # Send to Base44
+    # Send to Base44
+    if properties:
         scraper.send_to_base44(properties)
+    else:
+        logger.warning("No properties found")
 
 if __name__ == "__main__":
     main()
