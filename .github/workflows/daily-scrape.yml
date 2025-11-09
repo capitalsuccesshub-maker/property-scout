@@ -1,0 +1,40 @@
+name: Daily Idealista Scraper
+
+on:
+  schedule:
+    # Run every day at 9:00 AM UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+      
+      - name: Run Idealista scraper
+        env:
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
+          BASE44_APP_ID: ${{ secrets.BASE44_APP_ID }}
+        run: |
+          python scrape_idealista.py --city madrid --operation venta --pages 2
+      
+      - name: Upload logs (if needed)
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: scraper-logs
+          path: '*.log'
+          retention-days: 7
