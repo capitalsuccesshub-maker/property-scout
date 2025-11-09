@@ -63,7 +63,7 @@ class IdealistaScraper:
                     logger.info(f"Found {len(property_cards)} properties on page {page_num}")
                     
                     for card in property_cards:
-                        trydiv
+                        try:
                             property_data = self._parse_property(card)
                             if property_data:
                                 properties.append(property_data)
