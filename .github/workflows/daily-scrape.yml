@@ -31,10 +31,3 @@ jobs:
         run: |
           python scrape_idealista.py --city madrid --operation venta --pages 2
       
-      - name: Upload logs (if needed)
-        if: always()
-        uses: actions/upload-artifact@v4
-    with:
-          name: scraper-logs
-          path: '*.log'
-          retention-days: 7
