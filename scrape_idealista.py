@@ -59,11 +59,11 @@ class IdealistaScraper:
                     soup = BeautifulSoup(html, 'html.parser')
                     
                     # Find all property cards - use contains for class matching
-                    property_cards = soup.find_all('article', class_=lambda x: x and 'item' in x)
+                    property_cards = soup.find_all('div', class_='item-info-container')
                     logger.info(f"Found {len(property_cards)} properties on page {page_num}")
                     
                     for card in property_cards:
-                        try:
+                        trydiv
                             property_data = self._parse_property(card)
                             if property_data:
                                 properties.append(property_data)
@@ -100,7 +100,7 @@ class IdealistaScraper:
             
             # Property details
             details = []
-            detail_elems = card.find_all('span', class_='item-detail')
+                        detail_elems = card.find_all('span', class_='item-detail-char')
             for detail in detail_elems:
                 details.append(detail.get_text(strip=True))
             
