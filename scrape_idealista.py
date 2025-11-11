@@ -60,9 +60,8 @@ class IdealistaScraper:
                     soup = BeautifulSoup(html, 'html.parser')
                     
                     # Find all property cards - use contains for class matching
-                    property_cards = soup.find_all('div', attrs={'class': lambda x: x and 'item' in x})
-                                logger.info(f"Found {len(property_cards)} properties on page {page_num}")
-                    
+property_cards = soup.find_all('div', attrs={'class': lambda x: x and 'item' in x})
+        logger.info(f"Found {len(property_cards)} properties on page {page_num}")
                     for card in property_cards:
                         try:
                             erty_data = self._parse_property(card)
