@@ -65,7 +65,7 @@ class IdealistaScraper:
                     
                     for card in property_cards:
                         try:
-                            property_data = self._parse_property(card)
+                            erty_data = self._parse_property(card)
                             if property_data:
                                 properties.append(property_data)
                         except Exception as e:
