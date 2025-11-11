@@ -61,6 +61,7 @@ class IdealistaScraper:
                     
                     # Find all property cards - use contains for class matching
                     property_cards = soup.find_all('div', attrs={'class': lambda x: x and 'item' in x})                    logger.info(f"Found {len(property_cards)} properties on page {page_num}")
+                            # Force refresh for GitHub Actions
                     
                     for card in property_cards:
                         try:
